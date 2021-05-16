@@ -21,6 +21,21 @@ func Contains(args []vidhi.Arg) (bool, error) {
 	return strings.Contains(s, substr), nil
 }
 
+func ContainsAny(args []vidhi.Arg) (bool, error) {
+	if len(args) != 2 {
+		return false, fmt.Errorf("args array must have 2 elements")
+	}
+	s, err := extractStringArg(args, 0)
+	if err != nil {
+		return false, err
+	}
+	chars, err := extractStringArg(args, 1)
+	if err != nil {
+		return false, err
+	}
+	return strings.ContainsAny(s, chars), nil
+}
+
 func HasPrefix(args []vidhi.Arg) (bool, error) {
 	if len(args) != 2 {
 		return false, fmt.Errorf("args array must have 2 elements")
