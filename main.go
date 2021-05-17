@@ -3,84 +3,40 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"net/http"
 	"plugin"
 	"vidhi/vidhi"
 )
 
-var r = `
-{
-	"conjunction": "all",
-	"rules": [
-		{
-			"function": "Contains",
-			"Args": [
-				{
-					"Name": "s",
-					"Value": "1abc2"
-				},
-				{
-					"Name": "substr",
-					"Value": "abc"
-				}
-			]
-		},
-		{
-			"function": "HasPrefix",
-			"Args": [
-				{
-					"Name": "s",
-					"Value": "abc1"
-				},
-				{
-					"Name": "substr",
-					"Value": "abc"
-				}
-			]
-		},
-		{
-			"conjunction": "any",
-			"rules": [
-				{
-					"function": "HasSuffix",
-					"Args": [
-						{
-							"Name": "s",
-							"Value": "1abc"
-						},
-						{
-							"Name": "substr",
-							"Value": "abc"
-						}
-					]
-				},
-				{
-					"function": "HasPrefix",
-					"Args": [
-						{
-							"Name": "s",
-							"Value": "abc1"
-						},
-						{
-							"Name": "target",
-							"Value": "abc"
-						}
-					]
-				}
-			]
-		}
-	]
-}
-`
+var funcs map[string]plugin.Symbol
 
 func main() {
-	funcs, err := makeFuncs()
-	content := r
-	m, err := makeMap(content)
+	f, err := makeFuncs()
 	if err != nil {
 		panic(err)
 	}
+	funcs = f
+	http.HandleFunc("/vidhi", handler)
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		fmt.Println(err)
+	}
+	content := r.Form.Get("rules")
+	m, err := makeMap(content)
+	if err != nil {
+		panic(err) // TODO: return an error json
+	}
 	ruleSet := makeRuleSet(m)
-	execRules(ruleSet, funcs)
+	exec(ruleSet, funcs)
+	_, err = w.Write([]byte(fmt.Sprintf("%v", "done")))
+	if err != nil {
+		fmt.Printf("handler: Error writing to response writer: %s\n", err)
+	}
 }
 
 func makeFunction(rule map[string]interface{}) vidhi.Function {
@@ -90,10 +46,10 @@ func makeFunction(rule map[string]interface{}) vidhi.Function {
 	for i := 0; i < len(args); i++ {
 		switch args[i].(type) {
 		case map[string]interface{}:
-			ja := args[i].(map[string]interface{})
+			m := args[i].(map[string]interface{})
 			arg := vidhi.Arg{}
-			arg.Name = ja["Name"].(string)
-			arg.Value = ja["Value"].(string)
+			arg.Name = m["Name"].(string)
+			arg.Value = m["Value"].(string)
 			function.Args = append(function.Args, arg)
 		default:
 			fmt.Println("arg.(type) must be map[string]interface{}")
@@ -102,8 +58,7 @@ func makeFunction(rule map[string]interface{}) vidhi.Function {
 	return function
 }
 
-
-func execRules(ruleSet *vidhi.RuleSet, funcs map[string]plugin.Symbol) {
+func exec(ruleSet *vidhi.RuleSet, funcs map[string]plugin.Symbol) {
 	for i := 0; i < len(ruleSet.Rules); i++ {
 		switch ruleSet.Rules[i].(type) {
 		case vidhi.Function:
@@ -114,7 +69,7 @@ func execRules(ruleSet *vidhi.RuleSet, funcs map[string]plugin.Symbol) {
 			}
 			fmt.Println(b)
 		case *vidhi.RuleSet:
-			execRules(ruleSet.Rules[i].(*vidhi.RuleSet), funcs)
+			exec(ruleSet.Rules[i].(*vidhi.RuleSet), funcs)
 		default:
 			fmt.Printf("unknown type: %s", ruleSet.Rules[i])
 		}
